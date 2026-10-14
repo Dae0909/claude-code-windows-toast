@@ -1,0 +1,6 @@
+# Safety net: never commit real Claude Code settings — they may contain API tokens
+settings.json
+settings.json.bak*
+
+# Local scratch
+*.log

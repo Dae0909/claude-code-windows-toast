@@ -1,0 +1,34 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "C:\\Users\\<USER>\\.claude\\hooks\\claude-notify.ps1"], "timeout": 10 }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "AskUserQuestion|ExitPlanMode",
+        "hooks": [
+          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "C:\\Users\\<USER>\\.claude\\hooks\\claude-notify.ps1"], "timeout": 10 }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "C:\\Users\\<USER>\\.claude\\hooks\\claude-notify.ps1"], "timeout": 10 }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "elicitation_dialog|elicitation_url_dialog",
+        "hooks": [
+          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "C:\\Users\\<USER>\\.claude\\hooks\\claude-notify.ps1"], "timeout": 10 }
+        ]
+      }
+    ]
+  }
+}
