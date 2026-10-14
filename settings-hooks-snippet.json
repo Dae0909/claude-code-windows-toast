@@ -22,9 +22,23 @@
         ]
       }
     ],
+    "StopFailure": [
+      {
+        "hooks": [
+          { "type": "command", "command": "cmd.exe", "args": ["/c", "C:\\Users\\<USER>\\.claude\\hooks\\stopfailure-launcher.cmd"], "timeout": 10 }
+        ]
+      }
+    ],
+    "Elicitation": [
+      {
+        "hooks": [
+          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "C:\\Users\\<USER>\\.claude\\hooks\\claude-notify.ps1"], "timeout": 10 }
+        ]
+      }
+    ],
     "Notification": [
       {
-        "matcher": "elicitation_dialog|elicitation_url_dialog",
+        "matcher": "permission_prompt|agent_needs_input|agent_completed|quota_auto_resume_fired|quota_auto_resume_stale|quota_auto_resume_disabled",
         "hooks": [
           { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "C:\\Users\\<USER>\\.claude\\hooks\\claude-notify.ps1"], "timeout": 10 }
         ]

@@ -2,7 +2,7 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-Native Windows toast notifications for **Claude Code** — get a bottom-right notification when a task completes, when Claude is waiting for your choice, or when a permission prompt needs your approval.
+Native Windows toast notifications for **Claude Code** — know the moment a task finishes, fails, or needs your attention.
 
 Works with both the **Claude Code CLI** and the **VS Code extension** (they share the same `~/.claude/settings.json`). Zero dependencies: it only uses the built-in Windows PowerShell 5.1 and the native WinRT toast API.
 
@@ -10,28 +10,39 @@ Works with both the **Claude Code CLI** and the **VS Code extension** (they shar
 
 ## What you get
 
-| Trigger | Notification |
+| When | Notification |
 | --- | --- |
 | Task finished | `[project] Task complete` + a short preview of the final reply |
+| A turn fails with an API error (connection problems, rate limits, auth failures, server errors, ...) | `[project] Task error - reason` + a short error preview |
 | A multiple-choice question (`AskUserQuestion`) or plan approval (`ExitPlanMode`) is about to appear | `[project] Waiting for your choice` |
-| A permission prompt is about to appear (`PermissionRequest`) | `[project] Waiting for approval: <tool>` |
-| MCP elicitation form / URL request | `[project] Needs your attention` (after ~6 s) |
+| A permission prompt is about to appear (`PermissionRequest`) | `[project] Waiting for approval: tool` |
+| An MCP elicitation form is about to appear (`Elicitation`) | `[project] Waiting for input (server)` |
+| Background sessions finish or need input; quota auto-resume notices | `[project] ...` (fires in the relevant scenarios) |
 
-- **Native** — uses the Windows toast API; no modules, no background service, no third-party components.
-- **Safe** — the hook script never writes to stdout and always exits 0, so it can never allow or block a tool call by accident.
-- **Lightweight** — adds about 0.5 s at the end of a turn (can be made fully asynchronous).
+- **Native** — Windows toast API; no modules, no background service, no third-party components.
+- **Safe** — the hook never writes to stdout and always exits 0, so it can never allow or block a tool call by accident.
+- **Reliable** — failure notifications are handed to a detached helper process, so they still arrive when Claude Code exits immediately after an error (for example `claude -p`, or connection failures after retries).
 
 ## Requirements
 
 - Windows 10 / 11
-- Claude Code (CLI and/or the VS Code extension) — tested with v2.1.296
+- Claude Code (CLI and/or the VS Code extension) — tested with v2.1.296 - v2.1.299
 - Windows PowerShell 5.1 (preinstalled on Windows)
+
+## Files
+
+| File | Purpose |
+| --- | --- |
+| `claude-notify.ps1` | The notification script (reads the hook event, shows the toast) |
+| `stopfailure-launcher.cmd` | Tiny launcher for the failure hook (detached delivery; uses `%~dp0`, no machine-specific paths) |
+| `install-claude-notify.ps1` | One-shot installer (copies both scripts, merges six hook events, backs up settings, upgrades v1 in place) |
+| `settings-hooks-snippet.json` | Manual configuration snippet (replace `<USER>` with your user name) |
 
 ## Installation
 
 ### Option A — installer script (recommended)
 
-1. Download this repository (**Code → Download ZIP**) or a release package.
+1. Download this repository (**Code → Download ZIP**) or the package from Releases.
 2. Open PowerShell in the extracted folder and run:
 
    ```powershell
@@ -40,18 +51,18 @@ Works with both the **Claude Code CLI** and the **VS Code extension** (they shar
 
 3. Start a new Claude Code session (CLI or VS Code panel). Done.
 
-The installer copies `claude-notify.ps1` to `%USERPROFILE%\.claude\hooks\`, merges the hook configuration into `%USERPROFILE%\.claude\settings.json`, and creates a timestamped backup of the settings file first. Running it again does not create duplicates.
+The installer copies the scripts to `%USERPROFILE%\.claude\hooks\`, merges the hook configuration into `%USERPROFILE%\.claude\settings.json`, and creates a timestamped backup first. It is idempotent, and running it on a v1 installation upgrades it in place.
 
 ### Option B — manual setup
 
-1. Copy `claude-notify.ps1` to `C:\Users\<you>\.claude\hooks\` (create the folder if needed).
-2. Merge `settings-hooks-snippet.json` into `C:\Users\<you>\.claude\settings.json`, replacing `<USER>` in the script path with your actual user name.
+1. Copy `claude-notify.ps1` **and** `stopfailure-launcher.cmd` to `C:\Users\<you>\.claude\hooks\` (create the folder if needed).
+2. Merge `settings-hooks-snippet.json` into `C:\Users\<you>\.claude\settings.json`, replacing `<USER>` with your user name. The two script files themselves need no edits — the launcher resolves the script sitting next to it.
 
 ## Verifying it works
 
 - Send any prompt; when the reply finishes you should get a "Task complete" toast.
 - Trigger a question box or a permission dialog; you should get a "Waiting ..." toast right away.
-- Inspect the hooks engine with `claude --debug hooks`.
+- For troubleshooting, see `%LOCALAPPDATA%\claude-notify\debug.log` (written by the hook) and `claude --debug hooks`.
 
 ## Troubleshooting
 
@@ -59,41 +70,33 @@ The installer copies `claude-notify.ps1` to `%USERPROFILE%\.claude\hooks\`, merg
 - **"File is blocked" after download** — right-click the file → Properties → check *Unblock*.
 - **Garbled text in the toast** — make sure the script kept its UTF-8 (with BOM) encoding.
 
-## Customization
+## Upgrade from v1
 
-- Message strings live in `claude-notify.ps1`.
-- Want the popup instantly and the toast about 0.5 s later? Add `"async": true` to the hook entries in `settings.json`.
-- Want the toast to show as **Claude Code** instead of "Windows PowerShell"? That requires registering a custom AUMID (a possible future enhancement).
+Run the same installer command again. Existing entries are replaced in place (matcher updates included) and your other hooks are left untouched.
 
 ## Uninstall
 
-1. Remove the four hook entries from `settings.json` (or the whole `hooks` key if it holds no other hooks).
-2. Delete `%USERPROFILE%\.claude\hooks\claude-notify.ps1`.
+1. Remove the six hook entries from `settings.json` (or the whole `hooks` key if it holds no other hooks).
+2. Delete `%USERPROFILE%\.claude\hooks\claude-notify.ps1` and `stopfailure-launcher.cmd`.
 
 ## How it works
 
 ```
-Claude Code event ──▶ hook command (powershell.exe -File claude-notify.ps1)
-                        │  reads the event JSON from stdin
-                        └─▶ WinRT ToastNotificationManager.Show()
+Claude Code hook event
+  |- Stop / PreToolUse / PermissionRequest / Elicitation / Notification
+  |     -> powershell.exe -File claude-notify.ps1   (reads JSON, shows toast)
+  |- StopFailure
+        -> cmd launcher -> detached helper process -> toast
 ```
 
-Hook events used:
-
-| Event | Purpose |
-| --- | --- |
-| `Stop` | Main agent finished a response |
-| `PreToolUse` (`AskUserQuestion\|ExitPlanMode`) | Question / plan-approval box is about to appear |
-| `PermissionRequest` | Permission dialog is about to appear |
-| `Notification` (`elicitation_dialog\|elicitation_url_dialog`) | MCP elicitation dialogs |
+Hook events used: `Stop`, `PreToolUse` (AskUserQuestion / ExitPlanMode), `PermissionRequest`, `StopFailure`, `Elicitation`, `Notification` (permission prompts, background sessions, quota notices).
 
 ## Limitations
 
 - Windows only.
 - Notifications appear under the name "Windows PowerShell" (borrowed system AUMID).
+- User interrupts (Esc) and process crashes cannot notify — Claude Code provides no hook events for them.
 - One notification per finished turn; multiple windows/sessions produce multiple notifications.
-- `Esc` interrupts do not fire `Stop` (Claude Code behaviour).
-- Sandboxed network-request prompts are not covered yet (one extra matcher would add it).
 
 ## License
 
